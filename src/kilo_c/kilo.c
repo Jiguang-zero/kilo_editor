@@ -5,18 +5,25 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include "configs.h"
 
 int main() {
     enableRawMode();
 
-    char c;
-    while (read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
+    while (1) {
+        char c = '\0';
+        if (read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) {
+            die("read");
+        }
         if (iscntrl(c)) {
-            printf("%d\n", c);
+            printf("%d\r\n\n", c);
         } else {
-            printf("%d ('%c')\n", c, c);
+            printf("%d ('%c')\r\n", c, c);
+        }
+        if (c == 'q') {
+            break;
         }
     }
 

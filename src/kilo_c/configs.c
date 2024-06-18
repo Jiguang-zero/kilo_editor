@@ -6,6 +6,7 @@
 #include <termio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 struct termios orig_termios;
 
@@ -13,13 +14,38 @@ struct termios orig_termios;
  * disable raw mode when exit the program.
  */
 static void disableRawMode() {
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1) {
+        die("tcsetattr");
+    }
+}
+
+void die(const char * s) {
+    perror(s);
+    exit(1);
 }
 
 void enableRawMode() {
-    tcgetattr(STDIN_FILENO, &orig_termios);
+    if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
+        die("tcgetattr");
+    }
     atexit(disableRawMode);
     struct termios raw = orig_termios;
-    raw.c_lflag &= ~(ECHO | ICANON);
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+
+    // input flag: IXON: CTRL + C/Q;
+    // ICRNL: CR, carriage return, NL, new line
+    raw.c_iflag &= ~(IXON | ICRNL | BRKINT | INPCK | ISTRIP);
+    // local flag: ICANON: Non-canonical input
+    // IEXTEN: CTRL + V
+    raw.c_lflag &= ~(ECHO | ICANON | ISIG | IEXTEN);
+    // output flag: POST: Output Processing, "\n" -> "\r\n"
+    raw.c_oflag &= ~(OPOST);
+    // control flag
+    raw.c_cflag |= (CS8);
+
+    raw.c_cc[VMIN] = 0; // Minimum Number of Characters
+    raw.c_cc[VTIME] = 1; // Timeout in Deciseconds, 1/10 s
+
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) {
+        die("tcsetattr");
+    }
 }
