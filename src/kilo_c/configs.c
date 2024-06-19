@@ -3,33 +3,35 @@
 //
 
 #include "configs.h"
-#include <termio.h>
+
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-struct termios orig_termios;
+struct editorConfig E;
 
 /**
  * disable raw mode when exit the program.
  */
 static void disableRawMode() {
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1) {
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1) {
         die("tcsetattr");
     }
 }
 
 void die(const char * s) {
+    write(STDOUT_FILENO, "\x1b[2J", 4);
+    write(STDOUT_FILENO, "\x1b[H", 3);
     perror(s);
     exit(1);
 }
 
 void enableRawMode() {
-    if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) {
+    if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) {
         die("tcgetattr");
     }
     atexit(disableRawMode);
-    struct termios raw = orig_termios;
+    struct termios raw = E.orig_termios;
 
     // input flag: IXON: CTRL + C/Q;
     // ICRNL: CR, carriage return, NL, new line
