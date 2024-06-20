@@ -12,11 +12,17 @@
 
 #define KILO_VERSION "0.0.1"
 
+typedef struct editor_row {
+    int size;
+    char *chars;
+} editor_row;
 
 struct editorConfig {
     int cx, cy;
     int screen_rows;
     int screen_cols;
+    int num_rows;
+    editor_row* row;
     struct termios orig_termios;
 };
 

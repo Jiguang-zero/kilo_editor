@@ -4,5 +4,5 @@ project(kilo_c)
 set(CMAKE_C_STANDARD 11)
 
 add_executable(kilo_c kilo.c
-        editor.c
-        configs.c)
+        configs.c
+        editor.c)

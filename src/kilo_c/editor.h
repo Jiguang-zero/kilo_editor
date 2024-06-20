@@ -26,4 +26,10 @@ extern void editorRefreshScreen();
 
 extern void initEditor();
 
+/**
+ * editor open the file.
+ * @param fileName char*
+ */
+extern void editorOpen(char * fileName);
+
 #endif //KILO_C_EDITOR_H

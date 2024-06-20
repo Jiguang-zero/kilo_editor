@@ -97,23 +97,32 @@ static int editorReadKey() {
 static void editorDrawRows(struct append_buf * ab) {
     int y;
     for (y = 0; y < E.screen_rows; y ++ ) {
-        if (y == E.screen_rows / 3) {
-            char welcome[80];
-            int welcome_len = snprintf(welcome, sizeof(welcome),
-                                        "Kilo editor -- version %s", KILO_VERSION);
-            if (welcome_len > E.screen_cols) {
-                welcome_len = E.screen_cols;
-            }
-            int padding = (E.screen_cols - welcome_len) / 2;
-            if (padding) {
+        if (y >= E.num_rows) {
+            if (E.num_rows == 0 && y == E.screen_rows / 3) {
+                char welcome[80];
+                int welcome_len = snprintf(welcome, sizeof(welcome),
+                                           "Kilo editor -- version %s", KILO_VERSION);
+                if (welcome_len > E.screen_cols) {
+                    welcome_len = E.screen_cols;
+                }
+                int padding = (E.screen_cols - welcome_len) / 2;
+                if (padding) {
+                    abAppend(ab, "~", 1);
+                    padding--;
+                }
+                while (padding--) abAppend(ab, " ", 1);
+                abAppend(ab, welcome, welcome_len);
+            } else {
                 abAppend(ab, "~", 1);
-                padding --;
             }
-            while (padding -- ) abAppend(ab, " ", 1);
-            abAppend(ab, welcome, welcome_len);
         } else {
-            abAppend(ab, "~", 1);
+            int len = E.row[y].size;
+            if (len > E.screen_cols) {
+                len = E.screen_cols;
+            }
+            abAppend(ab, E.row[y].chars, len);
         }
+
 
         abAppend(ab, "\x1b[K", 3);
         if (y < E.screen_rows - 1) {
@@ -229,6 +238,39 @@ static int getCursorPosition(int * rows, int * cols) {
 }
 #pragma clang diagnostic pop
 
+static void editorAppend(char* s, size_t len) {
+    E.row = realloc(E.row, sizeof(editor_row) * (E.num_rows + 1)); // NOLINT(*-suspicious-realloc-usage)
+
+    int at = E.num_rows;
+
+    E.row[at].size = (int)len;
+    E.row[at].chars = malloc(len + 1);
+    memcpy(E.row[at].chars, s, len);
+    E.row[at].chars[len] = '\0';
+    E.num_rows ++;
+}
+
+void editorOpen(char * fileName) {
+    FILE *fp = fopen(fileName, "r");
+    if (!fp) {
+        die("open");
+    }
+
+    char * line = NULL;
+    size_t linecap = 0;
+    ssize_t lineLen;
+
+    while ((lineLen = getline(&line, &linecap, fp)) != -1) {
+        while (lineLen > 0 && (line[lineLen - 1] == '\r' || line[lineLen - 1] == '\n')) {
+            lineLen--;
+        }
+        editorAppend(line, lineLen);
+    }
+    free(line);
+    fclose(fp);
+}
+
+
 static int getWindowSize(int * rows, int * cols) {
     struct winsize ws;
 
@@ -247,6 +289,8 @@ static int getWindowSize(int * rows, int * cols) {
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
+    E.num_rows = 0;
+    E.row = NULL;
 
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
