@@ -11,14 +11,20 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 
 #define KILO_VERSION "0.0.1"
+#define KILO_TAB_STOP 8
 
 typedef struct editor_row {
     int size;
+    int r_size;
     char *chars;
+    char *render;
 } editor_row;
 
 struct editorConfig {
     int cx, cy;
+    int rx;
+    int row_off;
+    int col_off;
     int screen_rows;
     int screen_cols;
     int num_rows;

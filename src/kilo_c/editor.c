@@ -94,10 +94,44 @@ static int editorReadKey() {
     }
 }
 
+static int editorRowCxToRx(editor_row* row, int cx) {
+    int rx = 0;
+    int j;
+    for (j = 0; j < cx; j ++ ) {
+        if (row->chars[j] == '\t') {
+            rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+        }
+        rx ++;
+    }
+    return rx;
+}
+
+static void editorScroll() {
+    E.rx = 0;
+    if (E.cy < E.num_rows) {
+        E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+    }
+
+    if (E.cy < E.row_off) {
+        E.row_off = E.cy;
+    }
+    if (E.cy >= E.row_off + E.screen_rows) {
+        E.row_off = E.cy - E.screen_rows + 1;
+    }
+    if (E.rx < E.col_off) {
+        E.col_off = E.rx;
+    }
+    if (E.rx >= E.col_off + E.screen_cols) {
+        E.col_off = E.rx - E.screen_cols + 1;
+    }
+}
+
+
 static void editorDrawRows(struct append_buf * ab) {
     int y;
     for (y = 0; y < E.screen_rows; y ++ ) {
-        if (y >= E.num_rows) {
+        int fileRow = y + E.row_off;
+        if (fileRow >= E.num_rows) {
             if (E.num_rows == 0 && y == E.screen_rows / 3) {
                 char welcome[80];
                 int welcome_len = snprintf(welcome, sizeof(welcome),
@@ -116,11 +150,14 @@ static void editorDrawRows(struct append_buf * ab) {
                 abAppend(ab, "~", 1);
             }
         } else {
-            int len = E.row[y].size;
+            int len = E.row[fileRow].r_size - E.col_off;
+            if (len < 0) {
+                len = 0;
+            }
             if (len > E.screen_cols) {
                 len = E.screen_cols;
             }
-            abAppend(ab, E.row[y].chars, len);
+            abAppend(ab, &E.row[fileRow].render[E.col_off], len);
         }
 
 
@@ -132,6 +169,8 @@ static void editorDrawRows(struct append_buf * ab) {
 }
 
 void editorRefreshScreen() {
+    editorScroll();
+
     struct append_buf ab = ABUF_INIT;
 
     // hide the cursor
@@ -143,7 +182,8 @@ void editorRefreshScreen() {
     editorDrawRows(&ab);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.row_off) + 1,
+            (E.rx - E.col_off) + 1);
     abAppend(&ab, buf, (int)strlen(buf));
 
     abAppend(&ab, "\x1b[?25h", 6);
@@ -153,15 +193,23 @@ void editorRefreshScreen() {
 }
 
 static void editorMoveCursor(int key) {
+    editor_row * row = (E.cy >= E.num_rows) ? NULL : &E.row[E.cy];
+
     switch (key) {
         case ARROW_LEFT:
             if (E.cx != 0) {
                 E.cx--;
+            } else if (E.cy > 0) {
+                E.cy --;
+                E.cx = E.row[E.cy].size;
             }
             break;
         case ARROW_RIGHT:
-            if (E.cx != E.screen_cols - 1) {
+            if (row && E.cx < row->size) {
                 E.cx ++;
+            } else if (row && E.cx == row->size) {
+                E.cy ++;
+                E.cx = 0;
             }
             break;
         case ARROW_UP:
@@ -170,12 +218,18 @@ static void editorMoveCursor(int key) {
             }
             break;
         case ARROW_DOWN:
-            if (E.cy != E.screen_rows - 1) {
+            if (E.cy < E.num_rows) {
                 E.cy++;
             }
             break;
         default:
             break;
+    }
+
+    row = (E.cy >= E.num_rows) ? NULL : &E.row[E.cy];
+    int rowLen = row ? row->size : 0;
+    if (E.cx > rowLen) {
+        E.cx = rowLen;
     }
 }
 
@@ -238,15 +292,45 @@ static int getCursorPosition(int * rows, int * cols) {
 }
 #pragma clang diagnostic pop
 
-static void editorAppend(char* s, size_t len) {
+static void editorUpdateRow(editor_row* row) {
+    int tabs = 0;
+    int j;
+    for (j = 0; j < row->size; j ++ ) {
+        if (row->chars[j] == '\t') {
+            tabs ++;
+        }
+    }
+    free(row->render);
+    row->render = malloc(row->size + tabs * (KILO_TAB_STOP - 1) + 1);
+
+    int idx = 0;
+    for (j = 0; j < row->size; j ++ ) {
+        if (row->chars[j] == '\t') {
+            row->render[idx ++ ] = ' ';
+            while (idx % KILO_TAB_STOP != 0) {
+                row->render[idx ++ ] = ' ';
+            }
+        } else {
+            row->render[idx ++ ] = row->chars[j];
+        }
+    }
+    row->render[idx] = '\0';
+    row->r_size = idx;
+}
+
+static void editorAppendRow(char* s, size_t len) {
     E.row = realloc(E.row, sizeof(editor_row) * (E.num_rows + 1)); // NOLINT(*-suspicious-realloc-usage)
 
     int at = E.num_rows;
-
     E.row[at].size = (int)len;
     E.row[at].chars = malloc(len + 1);
     memcpy(E.row[at].chars, s, len);
     E.row[at].chars[len] = '\0';
+
+    E.row[at].r_size = 0;
+    E.row[at].render = NULL;
+    editorUpdateRow(&E.row[at]);
+
     E.num_rows ++;
 }
 
@@ -264,7 +348,7 @@ void editorOpen(char * fileName) {
         while (lineLen > 0 && (line[lineLen - 1] == '\r' || line[lineLen - 1] == '\n')) {
             lineLen--;
         }
-        editorAppend(line, lineLen);
+        editorAppendRow(line, lineLen);
     }
     free(line);
     fclose(fp);
@@ -289,6 +373,9 @@ static int getWindowSize(int * rows, int * cols) {
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
+    E.rx = 0;
+    E.row_off = 0;
+    E.col_off = 0;
     E.num_rows = 0;
     E.row = NULL;
 
@@ -296,3 +383,4 @@ void initEditor() {
         die("getWindowSize");
     }
 }
+//TODO: 中文'\t'有一点小错误
