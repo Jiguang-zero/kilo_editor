@@ -126,7 +126,6 @@ static void editorScroll() {
     }
 }
 
-
 static void editorDrawRows(struct append_buf * ab) {
     int y;
     for (y = 0; y < E.screen_rows; y ++ ) {
@@ -162,10 +161,34 @@ static void editorDrawRows(struct append_buf * ab) {
 
 
         abAppend(ab, "\x1b[K", 3);
-        if (y < E.screen_rows - 1) {
-            abAppend(ab, "\r\n", 2);
+        abAppend(ab, "\r\n", 2);
+    }
+}
+
+static void editorDrawStatusBar(struct append_buf * ab) {
+    // color: white
+    abAppend(ab, "\x1b[7m", 4);
+
+    char status[80], r_status[80];
+    // %.20s means that 20 size is the longest length.
+    int len = snprintf(status, sizeof(status), "%.20s - %d lines",
+                       E.fileName ? E.fileName : "[No Name]", E.num_rows);
+    int r_len = snprintf(r_status, sizeof(r_status), "%d/%d", E.cy + 1, E.num_rows);
+    if (len > E.screen_cols) {
+        len = E.screen_cols;
+    }
+    abAppend(ab, status, len);
+
+    while (len < E.screen_cols) {
+        if (E.screen_cols - len == r_len) {
+            abAppend(ab, r_status, r_len);
+            break;
+        } else {
+            abAppend(ab, " ", 1);
+            len ++;
         }
     }
+    abAppend(ab, "\x1b[m", 3);
 }
 
 void editorRefreshScreen() {
@@ -180,6 +203,7 @@ void editorRefreshScreen() {
     abAppend(&ab, "\x1b[H", 3);
 
     editorDrawRows(&ab);
+    editorDrawStatusBar(&ab);
 
     char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.row_off) + 1,
@@ -248,12 +272,21 @@ void editorProcessKeypress() {
             E.cx = 0;
             break;
         case END_KEY:
-            E.cx = E.screen_cols - 1;
+            if (E.cy < E.num_rows)
+                E.cx = E.row[E.cy].size;
             break;
 
         case PAGE_UP:
         case PAGE_DOWN:
         {
+            if (c == PAGE_UP) {
+                E.cy = E.row_off;
+            } else {
+                E.cy = E.row_off + E.screen_rows - 1;
+                if (E.cy > E.num_rows) {
+                    E.cy = E.num_rows;
+                }
+            }
             int times = E.screen_rows;
             while (times -- ) {
                 editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
@@ -334,7 +367,12 @@ static void editorAppendRow(char* s, size_t len) {
     E.num_rows ++;
 }
 
+/**
+ * open the file.
+ */
 void editorOpen(char * fileName) {
+    free(E.fileName);
+    E.fileName = strdup(fileName);
     FILE *fp = fopen(fileName, "r");
     if (!fp) {
         die("open");
@@ -378,9 +416,11 @@ void initEditor() {
     E.col_off = 0;
     E.num_rows = 0;
     E.row = NULL;
+    E.fileName = NULL;
 
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
     }
+    E.screen_rows -= 1;
 }
 //TODO: 中文'\t'有一点小错误
