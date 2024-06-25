@@ -32,4 +32,6 @@ extern void initEditor();
  */
 extern void editorOpen(char * fileName);
 
+extern void editorSetStatusMessage(const char *fmt, ...);
+
 #endif //KILO_C_EDITOR_H

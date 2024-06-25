@@ -9,6 +9,7 @@
 #include <sys/ioctl.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 
 enum editorKey {
@@ -189,6 +190,19 @@ static void editorDrawStatusBar(struct append_buf * ab) {
         }
     }
     abAppend(ab, "\x1b[m", 3);
+    abAppend(ab, "\r\n", 2);
+}
+
+static void editorDrawMessageBar(struct append_buf * ab) {
+    // clear the message
+    abAppend(ab, "\x1b[K", 3);
+    int msgLen = (int)strlen(E.statusMsg);
+    if (msgLen > E.screen_cols) {
+        msgLen = E.screen_cols;
+    }
+    if (msgLen && time(NULL) - E.statusMsg_time < 5) {
+        abAppend(ab, E.statusMsg, msgLen);
+    }
 }
 
 void editorRefreshScreen() {
@@ -204,6 +218,7 @@ void editorRefreshScreen() {
 
     editorDrawRows(&ab);
     editorDrawStatusBar(&ab);
+    editorDrawMessageBar(&ab);
 
     char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.row_off) + 1,
@@ -392,7 +407,6 @@ void editorOpen(char * fileName) {
     fclose(fp);
 }
 
-
 static int getWindowSize(int * rows, int * cols) {
     struct winsize ws;
 
@@ -408,6 +422,14 @@ static int getWindowSize(int * rows, int * cols) {
     }
 }
 
+void editorSetStatusMessage(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(E.statusMsg, sizeof(E.statusMsg), fmt, ap);
+    va_end(ap);
+    E.statusMsg_time = time(NULL);
+}
+
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
@@ -417,10 +439,12 @@ void initEditor() {
     E.num_rows = 0;
     E.row = NULL;
     E.fileName = NULL;
+    E.statusMsg[0] = '\0';
+    E.statusMsg_time = 0;
 
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");
     }
-    E.screen_rows -= 1;
+    E.screen_rows -= 2;
 }
 //TODO: 中文'\t'有一点小错误

@@ -5,8 +5,8 @@
 #ifndef KILO_C_CONFIGS_H
 #define KILO_C_CONFIGS_H
 
-// 'a' 97  1100001, the last five bits
 #include <termios.h>
+#include <time.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
@@ -30,6 +30,8 @@ struct editorConfig {
     int num_rows;
     editor_row* row;
     char * fileName;
+    char statusMsg[80];
+    time_t statusMsg_time;
     struct termios orig_termios;
 };
 
