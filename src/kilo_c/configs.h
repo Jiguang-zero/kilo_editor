@@ -12,6 +12,7 @@
 
 #define KILO_VERSION "0.0.1"
 #define KILO_TAB_STOP 8
+#define KILO_QUIT_TIMES 3
 
 typedef struct editor_row {
     int size;
@@ -29,6 +30,7 @@ struct editorConfig {
     int screen_cols;
     int num_rows;
     editor_row* row;
+    int dirty;
     char * fileName;
     char statusMsg[80];
     time_t statusMsg_time;

@@ -2,8 +2,8 @@
 // Created by 86158 on 2024/6/19.
 //
 
-#ifndef KILO_C_EDITOR_H
-#define KILO_C_EDITOR_H
+#ifndef KILO_C_VIEWER_H
+#define KILO_C_VIEWER_H
 
 #include "configs.h"
 
@@ -34,4 +34,4 @@ extern void editorOpen(char * fileName);
 
 extern void editorSetStatusMessage(const char *fmt, ...);
 
-#endif //KILO_C_EDITOR_H
+#endif //KILO_C_VIEWER_H
