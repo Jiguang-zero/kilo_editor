@@ -3,6 +3,7 @@
 //
 
 #include "editor.h"
+#include "highlight.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -176,9 +177,30 @@ static void editorDrawRows(struct append_buf * ab) {
             if (len > E.screen_cols) {
                 len = E.screen_cols;
             }
-            abAppend(ab, &E.row[fileRow].render[E.col_off], len);
+            char *c = &E.row[fileRow].render[E.col_off];
+            unsigned char *hl = &E.row[fileRow].hl[E.col_off];
+            int current_color = -1;
+            int j;
+            for (j = 0; j < len; j ++ ) {
+                if (hl[j] == HL_NORMAL) {
+                    if (current_color != -1) {
+                        abAppend(ab, "\x1b[39m", 5);
+                        current_color = -1;
+                    }
+                    abAppend(ab, &c[j], 1);
+                } else {
+                    int color = editorSyntaxToColor(hl[j]);
+                    if (color != current_color) {
+                        current_color = color;
+                        char buf[16];
+                        int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+                        abAppend(ab, buf, clen);
+                    }
+                    abAppend(ab, &c[j], 1);
+                }
+            }
+            abAppend(ab, "\x1b[39m", 5);
         }
-
 
         abAppend(ab, "\x1b[K", 3);
         abAppend(ab, "\r\n", 2);
@@ -194,7 +216,8 @@ static void editorDrawStatusBar(struct append_buf * ab) {
     int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
                        E.fileName ? E.fileName : "[No Name]", E.num_rows,
                        E.dirty ? "(modified)" : "");
-    int r_len = snprintf(r_status, sizeof(r_status), "%d/%d", E.cy + 1, E.num_rows);
+    int r_len = snprintf(r_status, sizeof(r_status), "%s | %d/%d",
+                         E.syntax ? E.syntax->file_type : "no ft", E.cy + 1, E.num_rows);
     if (len > E.screen_cols) {
         len = E.screen_cols;
     }
@@ -384,6 +407,8 @@ static void editorUpdateRow(editor_row* row) {
     }
     row->render[idx] = '\0';
     row->r_size = idx;
+
+    editorUpdateSyntax(row);
 }
 
 static void editorInsertRow(int at, char *s, size_t len) {
@@ -401,6 +426,7 @@ static void editorInsertRow(int at, char *s, size_t len) {
 
     E.row[at].r_size = 0;
     E.row[at].render = NULL;
+    E.row[at].hl = NULL;
     editorUpdateRow(&E.row[at]);
 
     E.num_rows ++;
@@ -410,6 +436,7 @@ static void editorInsertRow(int at, char *s, size_t len) {
 static void editorFreeRow(editor_row* row) {
     free(row->render);
     free(row->chars);
+    free(row->hl);
 }
 
 static void editorDelRow(int at) {
@@ -523,6 +550,9 @@ static char* editorRowsToString(int * buffLen) {
 void editorOpen(char * fileName) {
     free(E.fileName);
     E.fileName = strdup(fileName);
+
+    editorSelectSyntaxHighlight();
+
     FILE *fp = fopen(fileName, "r");
     if (!fp) {
         die("open");
@@ -550,6 +580,7 @@ static void editorSave() {
             editorSetStatusMessage("Save aborted");
             return;
         }
+        editorSelectSyntaxHighlight();
     }
 
     int len;
@@ -578,6 +609,15 @@ static void editorSave() {
 static void editorFindCallback(char * query, int key) {
     static int last_match = -1;
     static int direction = 1;
+
+    static int saved_hl_line;
+    static char* saved_hl = NULL;
+
+    if (saved_hl) {
+        memcpy(E.row[saved_hl_line].hl, saved_hl, E.row[saved_hl_line].r_size);
+        free(saved_hl);
+        saved_hl = NULL;
+    }
 
     if (key == '\r' || key == '\x1b') {
         last_match = -1;
@@ -614,6 +654,11 @@ static void editorFindCallback(char * query, int key) {
             E.cy = current;
             E.cx = editorRowRxToCx(row, (int)(match - row->render));
             E.row_off = E.num_rows;
+
+            saved_hl_line = current;
+            saved_hl = malloc(row->r_size);
+            memcpy(saved_hl, row->hl, row->r_size);
+            memset(&row->hl[match - row->render], HL_MATCH, strlen(query));
             break;
         }
     }
@@ -674,6 +719,7 @@ void initEditor() {
     E.fileName = NULL;
     E.statusMsg[0] = '\0';
     E.statusMsg_time = 0;
+    E.syntax = NULL;
 
     if (getWindowSize(&E.screen_rows, &E.screen_cols) == -1) {
         die("getWindowSize");

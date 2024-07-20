@@ -8,6 +8,8 @@
 #include <termios.h>
 #include <time.h>
 
+#include "file_type.h"
+
 #define CTRL_KEY(k) ((k) & 0x1f)
 
 #define KILO_VERSION "0.0.1"
@@ -19,7 +21,9 @@ typedef struct editor_row {
     int r_size;
     char *chars;
     char *render;
+    unsigned char *hl; // highlight
 } editor_row;
+
 
 struct editorConfig {
     int cx, cy;
@@ -34,6 +38,7 @@ struct editorConfig {
     char * fileName;
     char statusMsg[80];
     time_t statusMsg_time;
+    struct editorSyntax *syntax;
     struct termios orig_termios;
 };
 
