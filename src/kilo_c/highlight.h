@@ -12,6 +12,7 @@
 enum editorHighlight {
     HL_NORMAL = 0,
     HL_COMMENT,
+    HL_ML_COMMENT,
     HL_KEYWORDS1,
     HL_KEYWORDS2,
     HL_STRING,

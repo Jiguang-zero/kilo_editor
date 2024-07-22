@@ -17,11 +17,13 @@
 #define KILO_QUIT_TIMES 3
 
 typedef struct editor_row {
+    int idx;
     int size;
     int r_size;
     char *chars;
     char *render;
     unsigned char *hl; // highlight
+    int hl_open_comment;
 } editor_row;
 
 

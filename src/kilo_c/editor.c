@@ -182,7 +182,17 @@ static void editorDrawRows(struct append_buf * ab) {
             int current_color = -1;
             int j;
             for (j = 0; j < len; j ++ ) {
-                if (hl[j] == HL_NORMAL) {
+                if (iscntrl(c[j])) { // non_printable character
+                    char sym = (c[j] <= 26) ? ('@' + c[j]) : '?'; // NOLINT(*-narrowing-conversions)
+                    abAppend(ab, "\x1b[7m", 4);
+                    abAppend(ab, &sym, 1);
+                    abAppend(ab, "\x1b[m", 3);
+                    if (current_color != -1) {
+                        char buf[16];
+                        int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", current_color);
+                        abAppend(ab, buf, clen);
+                    }
+                } else if (hl[j] == HL_NORMAL) {
                     if (current_color != -1) {
                         abAppend(ab, "\x1b[39m", 5);
                         current_color = -1;
@@ -418,6 +428,9 @@ static void editorInsertRow(int at, char *s, size_t len) {
 
     E.row = realloc(E.row, sizeof(editor_row) * (E.num_rows + 1)); // NOLINT(*-suspicious-realloc-usage)
     memmove(&E.row[at + 1], &E.row[at], sizeof(editor_row) * (E.num_rows - at));
+    for (int j = at + 1; j <= E.num_rows; j ++ )    E.row[j].idx ++;
+
+    E.row[at].idx = at;
 
     E.row[at].size = (int)len;
     E.row[at].chars = malloc(len + 1);
@@ -427,6 +440,7 @@ static void editorInsertRow(int at, char *s, size_t len) {
     E.row[at].r_size = 0;
     E.row[at].render = NULL;
     E.row[at].hl = NULL;
+    E.row[at].hl_open_comment = 0;
     editorUpdateRow(&E.row[at]);
 
     E.num_rows ++;
@@ -445,6 +459,7 @@ static void editorDelRow(int at) {
     }
     editorFreeRow(&E.row[at]);
     memmove(&E.row[at], &E.row[at + 1], sizeof(editor_row) * (E.num_rows - at - 1));
+    for (int j = at; j < E.num_rows - 1; j ++ )     E.row[j].idx --;
     E.num_rows --;
     E.dirty ++;
 }
